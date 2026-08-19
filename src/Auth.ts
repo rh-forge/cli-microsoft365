@@ -107,7 +107,8 @@ export enum AuthType {
   Identity = 'identity',
   FederatedIdentity = 'federatedIdentity',
   Browser = 'browser',
-  Secret = 'secret'
+  Secret = 'secret',
+  ExternalToken = 'externalToken'
 }
 
 export enum CertificateType {
@@ -185,6 +186,12 @@ export class Auth {
       return;
     }
 
+    const externalToken = this.getExternalAccessToken();
+    if (externalToken) {
+      this.configureExternalTokenConnection(externalToken);
+      return;
+    }
+
     try {
       const connection: Connection = await this.getConnectionInfoFromStorage();
       this._connection = Object.assign(this._connection, connection);
@@ -195,6 +202,23 @@ export class Auth {
   }
 
   public async ensureAccessToken(resource: string, logger: Logger, debug: boolean = false, fetchNew: boolean = false): Promise<string> {
+    const externalToken = this.getExternalAccessToken();
+    if (externalToken) {
+      if (resource !== this.defaultResource) {
+        throw new CommandError(`CLIMICROSOFT365_ACCESS_TOKEN can only be used with Microsoft Graph (${this.defaultResource}). The requested resource was ${resource}.`);
+      }
+
+      if (debug) {
+        await logger.logToStderr('Using access token from CLIMICROSOFT365_ACCESS_TOKEN environment variable');
+      }
+      this.configureExternalTokenConnection(externalToken);
+      return externalToken;
+    }
+
+    if (this.connection.authType === AuthType.ExternalToken) {
+      throw new CommandError('CLIMICROSOFT365_ACCESS_TOKEN is no longer available. Restore the environment credential and try again.');
+    }
+
     const now: Date = new Date();
     const accessToken: AccessToken | undefined = this.connection.accessTokens[resource];
     const expiresOn: Date = accessToken && accessToken.expiresOn ?
@@ -302,6 +326,29 @@ export class Auth {
       }
     }
     return response.accessToken;
+  }
+
+  private getExternalAccessToken(): string | undefined {
+    const externalToken = process.env.CLIMICROSOFT365_ACCESS_TOKEN;
+    return externalToken?.trim() ? externalToken : undefined;
+  }
+
+  private configureExternalTokenConnection(externalToken: string): void {
+    const fallbackIdentity = 'external-token';
+    const identityName = accessTokenUtil.accessToken.getUserNameFromAccessToken(externalToken) || fallbackIdentity;
+    const identityId = accessTokenUtil.accessToken.getUserIdFromAccessToken(externalToken) || fallbackIdentity;
+    const identityTenantId = accessTokenUtil.accessToken.getTenantIdFromAccessToken(externalToken) || undefined;
+
+    this.connection.active = true;
+    this.connection.authType = AuthType.ExternalToken;
+    this.connection.accessTokens[this.defaultResource] = {
+      expiresOn: null,
+      accessToken: externalToken
+    };
+    this.connection.identityName = identityName;
+    this.connection.identityId = identityId;
+    this.connection.identityTenantId = identityTenantId;
+    this.connection.name = identityId;
   }
 
   private async getAuthClientConfiguration(logger: Logger, debug: boolean, certificateThumbprint?: string, certificatePrivateKey?: string, clientSecret?: string): Promise<Msal.Configuration> {
