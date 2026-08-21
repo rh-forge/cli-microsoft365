@@ -2,12 +2,18 @@ name: Check PR
 
 on: pull_request
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: &node_version 24
 
 jobs:
   build:
-    if: github.repository_owner == 'pnp'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -45,7 +51,6 @@ jobs:
           name: build-${{ matrix.os }}-${{ matrix.node }}
           path: build.tar
   test:
-    if: github.repository_owner == 'pnp'
     needs: build
     runs-on: ${{ matrix.os }}
     strategy:
@@ -127,7 +132,6 @@ jobs:
           name: coverage-${{ matrix.os }}-${{ matrix.nodeRun }}
           path: coverage.tar
   test_docs:
-    if: github.repository_owner == 'pnp'
     runs-on: ubuntu-latest
 
     steps:

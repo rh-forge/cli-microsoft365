@@ -236,7 +236,7 @@ describe(commands.EVENT_LIST, () => {
 
   it('passes validation if neither userId nor userName is specified', () => {
     const actual = commandOptionsSchema.safeParse({
-      id: calendarId
+      calendarId
     });
     assert.strictEqual(actual.success, true);
   });

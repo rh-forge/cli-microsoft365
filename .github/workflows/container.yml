@@ -1,0 +1,30 @@
+name: Container build
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - package.json
+      - .github/workflows/container.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLI_IMAGE_TEST_VERSION: 11.10.0
+
+jobs:
+  container:
+    name: Build image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image with the latest published stable package
+        run: docker build --build-arg "CLI_VERSION=$CLI_IMAGE_TEST_VERSION" --tag local/cli-microsoft365:ci .
