@@ -625,7 +625,25 @@ describe('Request', () => {
     assert((auth.ensureAccessToken as sinon.SinonStub).calledWith('https://graph.microsoft.com'));
   });
 
-  it('does not route non-Graph requests through the external Graph base URL', async () => {
+  it('sends no authorization header when routing through the external Graph base URL', async () => {
+    process.env.CLIMICROSOFT365_ACCESS_TOKEN = 'inter-vm-bearer';
+    process.env.CLIMICROSOFT365_GRAPH_BASE_URL = 'http://127.0.0.1:18080';
+    auth.connection.cloudType = CloudType.Public;
+    let actualHeaders: any;
+    sinon.stub(_request as any, 'req').callsFake((requestOptions: any) => {
+      actualHeaders = requestOptions.headers;
+      return { data: {} };
+    });
+
+    await _request.get({
+      url: 'https://graph.microsoft.com/v1.0/me/messages?$top=10',
+      headers: {}
+    });
+
+    assert.strictEqual(actualHeaders.authorization, undefined);
+  });
+
+  it('routes a headerless Graph request through the external Graph base URL', async () => {
     process.env.CLIMICROSOFT365_ACCESS_TOKEN = 'inter-vm-bearer';
     process.env.CLIMICROSOFT365_GRAPH_BASE_URL = 'http://127.0.0.1:18080';
     auth.connection.cloudType = CloudType.Public;
@@ -635,9 +653,27 @@ describe('Request', () => {
       return { data: {} };
     });
 
+    await _request.execute({ url: 'https://graph.microsoft.com/v1.0/me' });
+
+    assert.strictEqual(actualUrl, 'http://127.0.0.1:18080/v1.0/me');
+  });
+
+  it('does not route non-Graph requests through the external Graph base URL', async () => {
+    process.env.CLIMICROSOFT365_ACCESS_TOKEN = 'inter-vm-bearer';
+    process.env.CLIMICROSOFT365_GRAPH_BASE_URL = 'http://127.0.0.1:18080';
+    auth.connection.cloudType = CloudType.Public;
+    let actualUrl = '';
+    let actualHeaders: any;
+    sinon.stub(_request as any, 'req').callsFake((requestOptions: any) => {
+      actualUrl = requestOptions.url as string;
+      actualHeaders = requestOptions.headers;
+      return { data: {} };
+    });
+
     await _request.get({ url: 'https://contoso.sharepoint.com/_api/web', headers: {} });
 
     assert.strictEqual(actualUrl, 'https://contoso.sharepoint.com/_api/web');
+    assert.strictEqual(actualHeaders.authorization, 'Bearer ABC');
   });
 
   it('rejects an external Graph base URL without an external token', async () => {
