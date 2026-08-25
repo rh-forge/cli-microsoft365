@@ -259,6 +259,13 @@ class Request {
     }
 
     options.url = `${proxyUrl.origin}${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`;
+
+    // The proxy owns the caller's credential; whatever token this process
+    // holds must never ride toward it. Strip the header at the same moment
+    // the destination changes, so no request can carry both.
+    if (options.headers) {
+      delete options.headers.authorization;
+    }
   }
 
   private updateRequestForCloudType(options: AxiosRequestConfig, cloudType: CloudType): void {
