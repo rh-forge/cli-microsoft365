@@ -1,0 +1,65 @@
+# Artifact image for the m365 CLI: a FROM scratch image whose only content is
+# the CLI installed under the npm global prefix /opt/m365. Consumers
+# (rh-forge/openclaw-saw-image) inline it with a digest-pinned
+# `FROM ghcr.io/rh-forge/m365-cli:sha-<commit>@sha256:... AS m365-artifact` /
+# `COPY --from=m365-artifact /opt/m365 /opt/m365` and symlink
+# /opt/m365/bin/m365 to /usr/local/bin/m365. The TypeScript build and the
+# dependency install happen here, once per fork commit, not in every
+# downstream image build. Published by .github/workflows/publish-image.yml.
+#
+# The tree is arch- and ABI-independent (no native modules), but it is built
+# and smoke-tested against Node 22 because that is the consumer's runtime
+# major. hi/nodejs only publishes stream tags, so the digest was resolved from
+# 22-builder at pin time; re-resolve with
+# `skopeo inspect --no-tags --override-os linux --override-arch amd64 \
+#    --format '{{.Digest}}' docker://registry.access.redhat.com/hi/nodejs:22-builder`
+ARG NODE_IMAGE=registry.access.redhat.com/hi/nodejs:22-builder@sha256:87c55b0b1ca2ef8a0f991ab09742d0d61d7bc16dc258bd45df1fc5b5a535b1f6
+
+FROM ${NODE_IMAGE} AS build
+
+USER 0
+ENV CLIMICROSOFT365_NOUPDATE=1 \
+    npm_config_update_notifier=false \
+    npm_config_fund=false \
+    npm_config_audit=false
+
+WORKDIR /src
+
+# Dependencies first, from the shrinkwrap, so a source-only change reuses
+# this layer. --ignore-scripts: nothing in the tree needs an install hook
+# (protobufjs's postinstall only generates optional helpers), and it keeps
+# the fork's "prepare" hook from running a build before sources are copied.
+COPY package.json npm-shrinkwrap.json ./
+RUN npm ci --ignore-scripts
+
+COPY . .
+
+# Build, then let npm install the packed tarball into its own global prefix:
+# `npm pack` applies .npmignore (the single definition of the shipped file
+# set: dist/, allCommands*.json, docs/docs/cmd for --help, the completion
+# script, package.json, the shrinkwrap), and `npm install --global` from that
+# tarball resolves the package's dependencies from the shrinkwrap it carries,
+# creates the bin link with the right mode, and needs no tar in the builder
+# (the arm64 hi/nodejs builder has none). Layout is npm's standard prefix
+# layout: /opt/m365/bin/m365 -> ../lib/node_modules/@pnp/cli-microsoft365/dist/index.js
+RUN set -eux; \
+    npm run build; \
+    npm pack --ignore-scripts --pack-destination /tmp; \
+    npm install --global --prefix /opt/m365 --omit=dev --ignore-scripts /tmp/pnp-cli-microsoft365-*.tgz; \
+    npm cache clean --force; \
+    pkg=/opt/m365/lib/node_modules/@pnp/cli-microsoft365; \
+    test -x /opt/m365/bin/m365; \
+    test -f "$pkg/allCommands.json"; \
+    test -f "$pkg/allCommandsFull.json"; \
+    test -d "$pkg/docs/docs/cmd"; \
+    test ! -d "$pkg/src"; \
+    HOME=/tmp /opt/m365/bin/m365 version; \
+    HOME=/tmp /opt/m365/bin/m365 spo site list --help >/dev/null
+
+FROM scratch
+
+LABEL org.opencontainers.image.source="https://github.com/rh-forge/cli-microsoft365"
+LABEL org.opencontainers.image.description="m365 CLI installed under the npm prefix /opt/m365 (artifact image; needs a Node 22 runtime)"
+LABEL org.opencontainers.image.licenses="MIT"
+
+COPY --from=build /opt/m365 /opt/m365
