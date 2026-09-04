@@ -1,0 +1,39 @@
+name: ci
+
+# Fork CI. The workflows inherited from upstream (check_pr, release, ...) are
+# all gated on `github.repository_owner == 'pnp'` and never run here, so
+# without this file the fork ships a production artifact with zero test
+# coverage in CI. Same steps as upstream's check_pr build+test legs, on the
+# Node major the artifact image is built and consumed with.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLIMICROSOFT365_NOUPDATE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run test:test

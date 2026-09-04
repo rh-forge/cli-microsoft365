@@ -1,0 +1,16 @@
+# Build context for Containerfile.artifact. Mirrors .npmignore: the build
+# needs sources, the shrinkwrap, the scripts that assemble dist/, and the
+# command docs that ship in the package (m365 --help reads docs/docs/cmd).
+.git
+.github
+node_modules
+dist
+allCommands*.json
+coverage
+.nyc_output
+.vscode
+.circleci
+test-projects
+docs/**
+!docs/docs/cmd/**
+!docs/docs/_clisettings.mdx
