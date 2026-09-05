@@ -625,12 +625,17 @@ describe('Request', () => {
     assert((auth.ensureAccessToken as sinon.SinonStub).calledWith('https://graph.microsoft.com'));
   });
 
-  it('sends no authorization header when routing through the external Graph base URL', async () => {
+  it('keeps the authorization header when routing through the external Graph base URL', async () => {
+    // The external token is the caller's credential toward the proxy (an
+    // OpenShell placeholder or the inter-VM bearer), so the rewritten request
+    // must still carry it: the proxy authenticates the caller with it.
     process.env.CLIMICROSOFT365_ACCESS_TOKEN = 'inter-vm-bearer';
     process.env.CLIMICROSOFT365_GRAPH_BASE_URL = 'http://127.0.0.1:18080';
     auth.connection.cloudType = CloudType.Public;
+    let actualUrl = '';
     let actualHeaders: any;
     sinon.stub(_request as any, 'req').callsFake((requestOptions: any) => {
+      actualUrl = requestOptions.url as string;
       actualHeaders = requestOptions.headers;
       return { data: {} };
     });
@@ -640,7 +645,8 @@ describe('Request', () => {
       headers: {}
     });
 
-    assert.strictEqual(actualHeaders.authorization, undefined);
+    assert.strictEqual(actualUrl, 'http://127.0.0.1:18080/v1.0/me/messages?$top=10');
+    assert.strictEqual(actualHeaders.authorization, 'Bearer ABC');
   });
 
   it('routes a headerless Graph request through the external Graph base URL', async () => {
