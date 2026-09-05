@@ -260,12 +260,15 @@ class Request {
 
     options.url = `${proxyUrl.origin}${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`;
 
-    // The proxy owns the caller's credential; whatever token this process
-    // holds must never ride toward it. Strip the header at the same moment
-    // the destination changes, so no request can carry both.
-    if (options.headers) {
-      delete options.headers.authorization;
-    }
+    // The authorization header stays on the rewritten request. Under the
+    // governed deployment CLIMICROSOFT365_ACCESS_TOKEN is not a Graph token
+    // but the caller's credential toward the proxy itself (an OpenShell
+    // provider placeholder that the sandbox supervisor substitutes on the
+    // inspected hop, or the inter-VM bearer the proxy authenticates). The
+    // proxy holds the real Graph credential and only ever sees this
+    // process's value as its own front-door bearer, so stripping it here
+    // produced 401s from the proxy for every built-in command while
+    // `m365 request --url <proxy>/...` kept working.
   }
 
   private updateRequestForCloudType(options: AxiosRequestConfig, cloudType: CloudType): void {
